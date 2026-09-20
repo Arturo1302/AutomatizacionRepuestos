@@ -1,0 +1,362 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "repuestos-buscar",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "9d43ae34-514b-4b77-87f2-fd430668f338",
+      "name": "Webhook - Recibir Consulta",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        32
+      ],
+      "webhookId": "repuestos-buscar-webhook"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/embeddings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"openai/text-embedding-3-small\", input: $json.body.consulta }) }}",
+        "options": {}
+      },
+      "id": "96862d2d-5f78-4c39-9f66-05bd490c668d",
+      "name": "OpenRouter - Embedding de Consulta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        160,
+        32
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "fY1ZOylHdG7Nk50M",
+          "name": "Bearer Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://qdrant:6333/collections/repuestos/points/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ vector: $json.data[0].embedding, limit: 5, with_payload: true }) }}",
+        "options": {}
+      },
+      "id": "e15f442c-7666-4bce-bef5-1f31724441e8",
+      "name": "Qdrant - Buscar Similares",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        384,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resultados = $json.result || [];\nconst consulta = $('Webhook - Recibir Consulta').item.json.body.consulta;\n\nconst contexto = resultados.map(r => `SKU: ${r.payload.sku} | ${r.payload.nombre} | Marca: ${r.payload.marca} | Modelo compatible: ${r.payload.modelo_compatible} | Precio: $${r.payload.precio} | Stock: ${r.payload.stock} | Similitud: ${(r.score*100).toFixed(1)}%`).join('\\n');\n\nreturn {\n  json: {\n    consulta,\n    contexto: contexto || 'No se encontraron repuestos similares.',\n    resultados\n  }\n};"
+      },
+      "id": "035d964b-19b8-47e3-b07a-c9763859bffa",
+      "name": "Formatear Contexto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"openai/gpt-4o-mini\", messages: [ { role: \"system\", content: \"Eres un asesor experto en repuestos automotrices. Recibes la consulta de un cliente y una lista de repuestos candidatos encontrados por similitud semantica en el catalogo. Responde de forma clara, amigable y breve, recomendando el o los repuestos mas adecuados con su SKU, precio y disponibilidad. Si la similitud es baja o no hay resultados relevantes, dilo honestamente y pide mas detalles al cliente (marca, modelo, año, sintoma).\" }, { role: \"user\", content: `Consulta del cliente: \"${$json.consulta}\"\\n\\nRepuestos candidatos:\\n${$json.contexto}` } ] }) }}",
+        "options": {}
+      },
+      "id": "eeee3f57-5fcb-4b3e-802b-700ffc240464",
+      "name": "OpenRouter - Redactar Respuesta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        816,
+        32
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "fY1ZOylHdG7Nk50M",
+          "name": "Bearer Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const respuesta = $json.choices[0].message.content;\nconst resultados = $('Formatear Contexto').item.json.resultados;\n\nreturn {\n  json: {\n    respuesta,\n    repuestos_sugeridos: resultados.map(r => r.payload)\n  }\n};"
+      },
+      "id": "57d2eb34-1c06-4351-8423-de6752b45799",
+      "name": "Preparar Respuesta Final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "09cf9535-0145-4343-8d52-a756eeb8b481",
+      "name": "Responder al Cliente",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1264,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "repuestos-sync",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "566855b5-efd1-433e-b14a-f2e7c520956e",
+      "name": "Webhook - Recibir Repuesto",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        368
+      ],
+      "webhookId": "repuestos-sync-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json.body || $input.item.json;\n\nconst texto = [\n  item.nombre,\n  item.marca,\n  item.modelo_compatible ? `modelo compatible: ${item.modelo_compatible}` : '',\n  (item.anio_desde && item.anio_hasta) ? `años ${item.anio_desde}-${item.anio_hasta}` : '',\n  item.cilindraje ? `cilindraje ${item.cilindraje}` : '',\n  item.descripcion || ''\n].filter(Boolean).join('. ');\n\nreturn {\n  json: {\n    ...item,\n    texto_busqueda: texto\n  }\n};"
+      },
+      "id": "17228979-e11f-4860-85cf-409f9cc101ab",
+      "name": "Construir Texto Descriptivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/embeddings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"openai/text-embedding-3-small\", input: $json.texto_busqueda }) }}",
+        "options": {}
+      },
+      "id": "f717d6b2-5602-4bb2-b6c4-4899673cfdc8",
+      "name": "OpenRouter - Generar Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        384,
+        368
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "fY1ZOylHdG7Nk50M",
+          "name": "Bearer Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const embedding = $json.data[0].embedding;\nconst original = $('Construir Texto Descriptivo').item.json;\n\nreturn {\n  json: {\n    id: original.id,\n    vector: embedding,\n    payload: {\n      sku: original.sku,\n      nombre: original.nombre,\n      marca: original.marca,\n      modelo_compatible: original.modelo_compatible,\n      anio_desde: original.anio_desde,\n      anio_hasta: original.anio_hasta,\n      cilindraje: original.cilindraje,\n      precio: original.precio,\n      stock: original.stock\n    }\n  }\n};"
+      },
+      "id": "6caa5688-92ca-433b-9e60-be6af4beb4fc",
+      "name": "Construir Punto Qdrant",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "http://qdrant:6333/collections/repuestos/points",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ points: [ { id: $json.id, vector: $json.vector, payload: $json.payload } ] }) }}",
+        "options": {}
+      },
+      "id": "229fed4b-533f-4b59-ac5f-9ccea0ed53a5",
+      "name": "Qdrant - Guardar Vector",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        816,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, mensaje: \"Repuesto indexado correctamente\", sku: $('Construir Punto Qdrant').item.json.payload.sku } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1024,
+        368
+      ],
+      "id": "d2b5b94f-56f3-4e4b-b39f-9261efd099f2",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "connections": {
+    "Webhook - Recibir Consulta": {
+      "main": [
+        [
+          {
+            "node": "OpenRouter - Embedding de Consulta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter - Embedding de Consulta": {
+      "main": [
+        [
+          {
+            "node": "Qdrant - Buscar Similares",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant - Buscar Similares": {
+      "main": [
+        [
+          {
+            "node": "Formatear Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear Contexto": {
+      "main": [
+        [
+          {
+            "node": "OpenRouter - Redactar Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter - Redactar Respuesta": {
+      "main": [
+        [
+          {
+            "node": "Preparar Respuesta Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Respuesta Final": {
+      "main": [
+        [
+          {
+            "node": "Responder al Cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - Recibir Repuesto": {
+      "main": [
+        [
+          {
+            "node": "Construir Texto Descriptivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Texto Descriptivo": {
+      "main": [
+        [
+          {
+            "node": "OpenRouter - Generar Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter - Generar Embedding": {
+      "main": [
+        [
+          {
+            "node": "Construir Punto Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Punto Qdrant": {
+      "main": [
+        [
+          {
+            "node": "Qdrant - Guardar Vector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant - Guardar Vector": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f6c6fdb0ff90f6aee10b62ea282696ce3d4340778dbb1fbfde18d1c6f5f66a73"
+  }
+}
