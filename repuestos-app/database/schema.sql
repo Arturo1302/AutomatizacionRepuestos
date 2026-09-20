@@ -1,0 +1,18 @@
+CREATE DATABASE IF NOT EXISTS repuestos_db;
+USE repuestos_db;
+
+CREATE TABLE IF NOT EXISTS repuestos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  sku VARCHAR(50) NOT NULL UNIQUE,
+  nombre VARCHAR(150) NOT NULL,
+  marca VARCHAR(80),
+  modelo_compatible VARCHAR(120),
+  anio_desde INT,
+  anio_hasta INT,
+  cilindraje VARCHAR(20),
+  descripcion TEXT,
+  precio DECIMAL(10,2),
+  stock INT DEFAULT 0,
+  creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
